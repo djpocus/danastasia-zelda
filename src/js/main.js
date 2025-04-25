@@ -388,31 +388,80 @@ async function loadAssets() {
         ground.receiveShadow = true;
         gameState.scene.add(ground);
 
-        // Load tree model
-        console.log('Loading tree model...');
-        const treeResult = await loader.loadAsync('assets/models/environment/low_polygon_tree_0424033052.glb');
-        console.log('Tree model loaded successfully');
+        // Load tree models
+        console.log('Loading tree models...');
+        const [treeResult1, treeResult2, treeResult3] = await Promise.all([
+            loader.loadAsync('assets/models/environment/low_polygon_tree_0424033052.glb'),
+            loader.loadAsync('assets/models/environment/make_me_a_low_poly_tr_0425195522.glb'),
+            loader.loadAsync('assets/models/environment/Low_Poly_Tree_in_a_fa_0425195043.glb')
+        ]);
+        console.log('Tree models loaded successfully');
 
-        // Calculate tree model's bounding box
-        const treeBoundingBox = new THREE.Box3().setFromObject(treeResult.scene);
-        const treeHeight = treeBoundingBox.max.y - treeBoundingBox.min.y;
-        const treeWidth = treeBoundingBox.max.x - treeBoundingBox.min.x;
-        console.log('Tree dimensions:', { height: treeHeight, width: treeWidth });
+        // Calculate bounding boxes for all tree types
+        const treeBoundingBox1 = new THREE.Box3().setFromObject(treeResult1.scene);
+        const treeHeight1 = treeBoundingBox1.max.y - treeBoundingBox1.min.y;
+        const treeWidth1 = treeBoundingBox1.max.x - treeBoundingBox1.min.x;
+
+        const treeBoundingBox2 = new THREE.Box3().setFromObject(treeResult2.scene);
+        const treeHeight2 = treeBoundingBox2.max.y - treeBoundingBox2.min.y;
+        const treeWidth2 = treeBoundingBox2.max.x - treeBoundingBox2.min.x;
+
+        const treeBoundingBox3 = new THREE.Box3().setFromObject(treeResult3.scene);
+        const treeHeight3 = treeBoundingBox3.max.y - treeBoundingBox3.min.y;
+        const treeWidth3 = treeBoundingBox3.max.x - treeBoundingBox3.min.x;
 
         // Add trees to the scene
         for (let i = 0; i < 20; i++) {
+            // Randomly choose tree type (equal probability for each type)
+            const treeType = Math.floor(Math.random() * 3); // 0, 1, or 2
+            let treeResult, treeHeight, treeWidth;
+            
+            switch(treeType) {
+                case 0:
+                    treeResult = treeResult1;
+                    treeHeight = treeHeight1;
+                    treeWidth = treeWidth1;
+                    break;
+                case 1:
+                    treeResult = treeResult2;
+                    treeHeight = treeHeight2;
+                    treeWidth = treeWidth2;
+                    break;
+                case 2:
+                    treeResult = treeResult3;
+                    treeHeight = treeHeight3;
+                    treeWidth = treeWidth3;
+                    break;
+            }
+            
             const tree = treeResult.scene.clone();
             
-            // Randomize tree scale
-            const scale = 3.0 + Math.random() * 1.0;
-            tree.scale.set(scale, scale, scale);
+            // Randomize tree scale based on type with additional random variation
+            let scale;
+            const sizeVariation = 0.8 + Math.random() * 0.4; // Random between 0.8 and 1.2 (80% to 120%)
+            
+            if (treeType === 1) { // Second tree type (taller variant)
+                const baseScale = (1.4 + Math.random() * 0.45) * sizeVariation; // Reduced by another 20% (from 1.75 + random * 0.56)
+                const heightIncrease = 1.3 + Math.random() * 0.2; // Random 30-50% increase
+                tree.scale.set(baseScale, baseScale * heightIncrease, baseScale);
+                var scaledHeight = treeHeight * (baseScale * heightIncrease);
+                var scaledWidth = treeWidth * baseScale;
+            } else if (treeType === 2) { // Third tree type
+                scale = (2.8 + Math.random() * 0.9) * sizeVariation;
+                tree.scale.set(scale, scale, scale);
+                var scaledHeight = treeHeight * scale;
+                var scaledWidth = treeWidth * scale;
+            } else { // First tree type (original)
+                scale = (3.0 + Math.random() * 1.0) * sizeVariation;
+                tree.scale.set(scale, scale, scale);
+                var scaledHeight = treeHeight * scale;
+                var scaledWidth = treeWidth * scale;
+            }
             
             // Position tree based on its bounding box
-            const scaledHeight = treeHeight * scale;
-            const scaledWidth = treeWidth * scale;
             tree.position.set(
                 Math.random() * 80 - 40,
-                scaledHeight / 2,  // Position at half height to place base on ground
+                scaledHeight / 2,
                 Math.random() * 80 - 40
             );
             
@@ -430,7 +479,6 @@ async function loadAssets() {
             gameState.scene.add(tree);
 
             // Add physics body for tree
-            console.log(`Creating physics body for tree ${i}...`);
             const treeShape = new CANNON.Cylinder(
                 (scaledWidth * 0.5) / 2,
                 (scaledWidth * 0.5) / 2,
