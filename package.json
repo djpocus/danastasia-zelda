@@ -1,0 +1,19 @@
+{
+  "name": "zelda-adventure",
+  "version": "1.0.0",
+  "description": "A 3D Zelda-type adventure game using Three.js",
+  "main": "index.js",
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.159.0",
+    "cannon-es": "^0.20.0",
+    "nipplejs": "^0.9.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+} 
