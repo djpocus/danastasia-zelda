@@ -22,7 +22,22 @@ const gameState = {
     animations: {},
     mixer: null,
     clock: new THREE.Clock(),
-    currentAnimation: 'idle'
+    currentAnimation: 'idle',
+    physics: {
+        bodies: {
+            ground: null,
+            trees: [],
+            character: null
+        },
+        debug: {
+            enabled: true,
+            helpers: {
+                ground: null,
+                trees: [],
+                character: null
+            }
+        }
+    }
 };
 
 // Initialize the game
@@ -76,24 +91,101 @@ function setupScene() {
     gameState.scene.add(ambientLight);
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(5, 10, 7);
+    directionalLight.position.set(50, 100, 50);
     directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
+    
+    // Shadow settings to cover the entire 100x100 ground plane
+    directionalLight.shadow.mapSize.width = 4096;
+    directionalLight.shadow.mapSize.height = 4096;
     directionalLight.shadow.camera.near = 0.5;
-    directionalLight.shadow.camera.far = 50;
-    directionalLight.shadow.camera.left = -10;
-    directionalLight.shadow.camera.right = 10;
-    directionalLight.shadow.camera.top = 10;
-    directionalLight.shadow.camera.bottom = -10;
+    directionalLight.shadow.camera.far = 200;
+    directionalLight.shadow.camera.left = -60;
+    directionalLight.shadow.camera.right = 60;
+    directionalLight.shadow.camera.top = 60;
+    directionalLight.shadow.camera.bottom = -60;
+    directionalLight.shadow.bias = -0.0001;
+    directionalLight.shadow.normalBias = 0.02;
+    
     gameState.scene.add(directionalLight);
 }
 
 // Setup physics world
 function setupPhysics() {
+    console.log('Setting up physics...');
+    
+    // Create physics world
     gameState.world = new CANNON.World({
         gravity: new CANNON.Vec3(0, -9.82, 0)
     });
+
+    // Create ground plane
+    console.log('Creating ground plane...');
+    const groundShape = new CANNON.Plane();
+    const groundBody = new CANNON.Body({
+        mass: 0,
+        shape: groundShape
+    });
+    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    gameState.world.addBody(groundBody);
+    gameState.physics.bodies.ground = groundBody;
+
+    // Add debug visualization for ground
+    if (gameState.physics.debug.enabled) {
+        console.log('Creating ground debug visualization...');
+        const groundHelper = createPhysicsDebugHelper(groundBody, 0xff0000);
+        gameState.scene.add(groundHelper);
+        gameState.physics.debug.helpers.ground = groundHelper;
+    }
+}
+
+// Add debug visualization function
+function createPhysicsDebugHelper(body, color = 0x00ff00) {
+    let helper;
+    if (body.shapes[0] instanceof CANNON.Plane) {
+        // For ground plane - make it more visible
+        const geometry = new THREE.PlaneGeometry(100, 100, 10, 10); // Add segments for better visibility
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide // Make it visible from both sides
+        });
+        helper = new THREE.Mesh(geometry, material);
+        helper.rotation.x = -Math.PI / 2;
+    } else if (body.shapes[0] instanceof CANNON.Cylinder) {
+        // For trees
+        const shape = body.shapes[0];
+        const geometry = new THREE.CylinderGeometry(
+            shape.radiusTop,
+            shape.radiusBottom,
+            shape.height,
+            8
+        );
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.5
+        });
+        helper = new THREE.Mesh(geometry, material);
+    } else if (body.shapes[0] instanceof CANNON.Box) {
+        // For character
+        const shape = body.shapes[0];
+        const geometry = new THREE.BoxGeometry(
+            shape.halfExtents.x * 2,
+            shape.halfExtents.y * 2,
+            shape.halfExtents.z * 2
+        );
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.5
+        });
+        helper = new THREE.Mesh(geometry, material);
+    }
+    return helper;
 }
 
 // Setup controls
@@ -221,6 +313,7 @@ async function loadAssets() {
                     console.log('Material found:', child.material);
                     child.material.roughness = 0.7;
                     child.material.metalness = 0.3;
+                    child.material.shadowSide = THREE.DoubleSide;
                 } else {
                     console.log('No material found for mesh:', child.name);
                     // Add a default material if none exists
@@ -233,14 +326,20 @@ async function loadAssets() {
             }
         });
         
-        // Set up character physics
-        const characterShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
-        const characterBody = new CANNON.Body({ mass: 1 });
-        characterBody.addShape(characterShape);
-        characterBody.position.copy(gameState.player.position);
+        // Add physics body to character with size that encompasses the whole model
+        const characterShape = new CANNON.Box(new CANNON.Vec3(0.3, 0.6, 0.3)); // Increased size to encompass character
+        const characterBody = new CANNON.Body({
+            mass: 5,
+            shape: characterShape,
+            position: new CANNON.Vec3(0, 0.6, 0), // Adjust height to match new size
+            fixedRotation: true,
+            linearDamping: 0.9,
+            angularDamping: 0.9
+        });
         gameState.world.addBody(characterBody);
-        
-        // Position character
+        gameState.physics.bodies.character = characterBody;
+
+        // Position character at ground level
         gameState.player.position.set(0, 0, 0);
         gameState.player.scale.set(1, 1, 1);
         
@@ -297,7 +396,8 @@ async function loadAssets() {
         // Calculate tree model's bounding box
         const treeBoundingBox = new THREE.Box3().setFromObject(treeResult.scene);
         const treeHeight = treeBoundingBox.max.y - treeBoundingBox.min.y;
-        console.log('Tree height:', treeHeight);
+        const treeWidth = treeBoundingBox.max.x - treeBoundingBox.min.x;
+        console.log('Tree dimensions:', { height: treeHeight, width: treeWidth });
 
         // Add trees to the scene
         for (let i = 0; i < 20; i++) {
@@ -309,6 +409,7 @@ async function loadAssets() {
             
             // Position tree based on its bounding box
             const scaledHeight = treeHeight * scale;
+            const scaledWidth = treeWidth * scale;
             tree.position.set(
                 Math.random() * 80 - 40,
                 scaledHeight / 2,  // Position at half height to place base on ground
@@ -327,6 +428,42 @@ async function loadAssets() {
             });
             
             gameState.scene.add(tree);
+
+            // Add physics body for tree
+            console.log(`Creating physics body for tree ${i}...`);
+            const treeShape = new CANNON.Cylinder(
+                (scaledWidth * 0.5) / 2,
+                (scaledWidth * 0.5) / 2,
+                scaledHeight,
+                8
+            );
+            const treeBody = new CANNON.Body({
+                mass: 0,
+                shape: treeShape,
+                position: new CANNON.Vec3(
+                    tree.position.x,
+                    tree.position.y,
+                    tree.position.z
+                )
+            });
+            gameState.world.addBody(treeBody);
+            gameState.physics.bodies.trees.push(treeBody);
+
+            // Add debug visualization for tree
+            if (gameState.physics.debug.enabled) {
+                console.log(`Creating debug visualization for tree ${i}...`);
+                const treeHelper = createPhysicsDebugHelper(treeBody, 0x0000ff);
+                gameState.scene.add(treeHelper);
+                gameState.physics.debug.helpers.trees.push(treeHelper);
+            }
+        }
+
+        // Add debug visualization for character
+        if (gameState.physics.debug.enabled) {
+            console.log('Creating character debug visualization...');
+            const characterHelper = createPhysicsDebugHelper(characterBody, 0xffff00);
+            gameState.scene.add(characterHelper);
+            gameState.physics.debug.helpers.character = characterHelper;
         }
 
         console.log('Environment setup complete');
@@ -383,17 +520,13 @@ function animate() {
     requestAnimationFrame(animate);
     
     const deltaTime = gameState.clock.getDelta();
+    const fixedTimeStep = 1.0 / 60.0;
 
-    // Update animations
-    if (gameState.mixer) {
-        gameState.mixer.update(deltaTime);
-    }
+    // Step the physics world
+    gameState.world.step(fixedTimeStep);
 
-    // Update physics
-    gameState.world.step(1/60);
-
-    // Player movement
-    if (gameState.player) {
+    // Handle character movement
+    if (gameState.physics.bodies.character && gameState.player) {
         const moveSpeed = 0.1;
         let isMoving = false;
         
@@ -401,51 +534,85 @@ function animate() {
         const forwardX = Math.sin(gameState.cameraAngle);
         const forwardZ = Math.cos(gameState.cameraAngle);
         
+        // Calculate new position based on controls
+        const newPosition = new THREE.Vector3(
+            gameState.physics.bodies.character.position.x,
+            0.6, // Update to match new physics body height
+            gameState.physics.bodies.character.position.z
+        );
+
         if (gameState.controls.forward) {
-            gameState.player.position.x += forwardX * moveSpeed;
-            gameState.player.position.z += forwardZ * moveSpeed;
+            newPosition.x += forwardX * moveSpeed;
+            newPosition.z += forwardZ * moveSpeed;
             isMoving = true;
         }
         if (gameState.controls.backward) {
-            gameState.player.position.x -= forwardX * moveSpeed;
-            gameState.player.position.z -= forwardZ * moveSpeed;
+            newPosition.x -= forwardX * moveSpeed;
+            newPosition.z -= forwardZ * moveSpeed;
             isMoving = true;
         }
         if (gameState.controls.left) {
-            gameState.player.position.x += forwardZ * moveSpeed;
-            gameState.player.position.z -= forwardX * moveSpeed;
+            newPosition.x += forwardZ * moveSpeed;
+            newPosition.z -= forwardX * moveSpeed;
             isMoving = true;
         }
         if (gameState.controls.right) {
-            gameState.player.position.x -= forwardZ * moveSpeed;
-            gameState.player.position.z += forwardX * moveSpeed;
+            newPosition.x -= forwardZ * moveSpeed;
+            newPosition.z += forwardX * moveSpeed;
             isMoving = true;
         }
 
+        // Update physics body position
+        gameState.physics.bodies.character.position.copy(newPosition);
+        
+        // Update visual model to be at ground level
+        gameState.player.position.set(newPosition.x, 0, newPosition.z);
+        
         // Update player rotation to face movement direction
         if (isMoving) {
             gameState.player.rotation.y = gameState.cameraAngle;
-            // Switch to running animation
             if (gameState.currentAnimation !== 'running') {
                 gameState.animations.idle.paused = true;
                 gameState.animations.running.paused = false;
                 gameState.currentAnimation = 'running';
             }
         } else {
-            // Switch to idle animation
             if (gameState.currentAnimation !== 'idle') {
                 gameState.animations.running.paused = true;
                 gameState.animations.idle.paused = false;
                 gameState.currentAnimation = 'idle';
             }
         }
+    }
 
-        // Update camera position based on player position and camera angle
+    // Update debug visualizations
+    if (gameState.physics.debug.enabled) {
+        // Update character debug helper
+        if (gameState.physics.debug.helpers.character && gameState.physics.bodies.character) {
+            gameState.physics.debug.helpers.character.position.copy(gameState.physics.bodies.character.position);
+            gameState.physics.debug.helpers.character.quaternion.copy(gameState.physics.bodies.character.quaternion);
+        }
+
+        // Update tree debug helpers
+        gameState.physics.bodies.trees.forEach((treeBody, index) => {
+            const helper = gameState.physics.debug.helpers.trees[index];
+            if (helper) {
+                helper.position.copy(treeBody.position);
+                helper.quaternion.copy(treeBody.quaternion);
+            }
+        });
+    }
+
+    // Update animations
+    if (gameState.mixer) {
+        gameState.mixer.update(deltaTime);
+    }
+
+    // Update camera position based on player position
+    if (gameState.player) {
         gameState.camera.position.x = gameState.player.position.x - Math.sin(gameState.cameraAngle) * gameState.cameraDistance;
         gameState.camera.position.z = gameState.player.position.z - Math.cos(gameState.cameraAngle) * gameState.cameraDistance;
         gameState.camera.position.y = gameState.player.position.y + gameState.cameraHeight;
-        
-        // Make camera look at player
         gameState.camera.lookAt(gameState.player.position);
     }
 
