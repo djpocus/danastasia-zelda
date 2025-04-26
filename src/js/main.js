@@ -301,13 +301,14 @@ function setupControls() {
 // Load game assets
 async function loadAssets() {
     const loader = new GLTFLoader(gameState.loadingManager);
+    const baseURL = '/danastasia-zelda';
     
     try {
         console.log('Starting to load character model...');
         
         // Load character model with error handling
         try {
-            const characterResult = await loader.loadAsync('/models/character.glb');
+            const characterResult = await loader.loadAsync(`${baseURL}/models/character.glb`);
             console.log('Character model loaded successfully:', characterResult);
             
             gameState.player = characterResult.scene;
@@ -381,8 +382,8 @@ async function loadAssets() {
             console.log('Loading animations...');
             try {
                 const [idleResult, runningResult] = await Promise.all([
-                    loader.loadAsync('/animations/Animation_Idle_03_withSkin.glb'),
-                    loader.loadAsync('/animations/Animation_Running_withSkin.glb')
+                    loader.loadAsync(`${baseURL}/animations/Animation_Idle_03_withSkin.glb`),
+                    loader.loadAsync(`${baseURL}/animations/Animation_Running_withSkin.glb`)
                 ]);
                 console.log('Animations loaded successfully');
                 
@@ -428,9 +429,9 @@ async function loadAssets() {
             console.log('Loading tree models...');
             try {
                 const [treeResult1, treeResult2, treeResult3] = await Promise.all([
-                    loader.loadAsync('/models/environment/low_polygon_tree_0424033052.glb'),
-                    loader.loadAsync('/models/environment/make_me_a_low_poly_tr_0425195522.glb'),
-                    loader.loadAsync('/models/environment/Low_Poly_Tree_in_a_fa_0425195043.glb')
+                    loader.loadAsync(`${baseURL}/models/environment/low_polygon_tree_0424033052.glb`),
+                    loader.loadAsync(`${baseURL}/models/environment/make_me_a_low_poly_tr_0425195522.glb`),
+                    loader.loadAsync(`${baseURL}/models/environment/Low_Poly_Tree_in_a_fa_0425195043.glb`)
                 ]);
                 console.log('Tree models loaded successfully');
 
