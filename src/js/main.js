@@ -30,12 +30,17 @@ const gameState = {
             character: null
         },
         debug: {
-            enabled: true,
+            enabled: false,
             helpers: {
                 ground: null,
                 trees: [],
                 character: null
             }
+        },
+        character: {
+            canJump: true,
+            jumpForce: 5,
+            isGrounded: true
         }
     }
 };
@@ -113,9 +118,20 @@ function setupScene() {
 function setupPhysics() {
     console.log('Setting up physics...');
     
-    // Create physics world
     gameState.world = new CANNON.World({
         gravity: new CANNON.Vec3(0, -9.82, 0)
+    });
+
+    // Add collision detection
+    gameState.world.addEventListener('beginContact', (event) => {
+        if (event.bodyA === gameState.physics.bodies.character || 
+            event.bodyB === gameState.physics.bodies.character) {
+            // Check if collision is with ground or tree
+            const otherBody = event.bodyA === gameState.physics.bodies.character ? event.bodyB : event.bodyA;
+            if (otherBody === gameState.physics.bodies.ground) {
+                gameState.physics.character.isGrounded = true;
+            }
+        }
     });
 
     // Create ground plane
@@ -153,22 +169,6 @@ function createPhysicsDebugHelper(body, color = 0x00ff00) {
         });
         helper = new THREE.Mesh(geometry, material);
         helper.rotation.x = -Math.PI / 2;
-    } else if (body.shapes[0] instanceof CANNON.Cylinder) {
-        // For trees
-        const shape = body.shapes[0];
-        const geometry = new THREE.CylinderGeometry(
-            shape.radiusTop,
-            shape.radiusBottom,
-            shape.height,
-            8
-        );
-        const material = new THREE.MeshBasicMaterial({
-            color: color,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.5
-        });
-        helper = new THREE.Mesh(geometry, material);
     } else if (body.shapes[0] instanceof CANNON.Box) {
         // For character
         const shape = body.shapes[0];
@@ -195,6 +195,7 @@ function setupControls() {
         backward: false,
         left: false,
         right: false,
+        jump: false,
         isRotating: false,
         lastMouseX: 0
     };
@@ -206,6 +207,13 @@ function setupControls() {
             case 'KeyS': gameState.controls.backward = true; break;
             case 'KeyA': gameState.controls.left = true; break;
             case 'KeyD': gameState.controls.right = true; break;
+            case 'Space': 
+                if (gameState.physics.character.canJump && gameState.physics.character.isGrounded) {
+                    gameState.controls.jump = true;
+                    gameState.physics.character.canJump = false;
+                    gameState.physics.character.isGrounded = false;
+                }
+                break;
         }
     });
 
@@ -215,6 +223,10 @@ function setupControls() {
             case 'KeyS': gameState.controls.backward = false; break;
             case 'KeyA': gameState.controls.left = false; break;
             case 'KeyD': gameState.controls.right = false; break;
+            case 'Space': 
+                gameState.controls.jump = false;
+                gameState.physics.character.canJump = true;
+                break;
         }
     });
 
@@ -327,15 +339,32 @@ async function loadAssets() {
         });
         
         // Add physics body to character with size that encompasses the whole model
-        const characterShape = new CANNON.Box(new CANNON.Vec3(0.3, 0.6, 0.3)); // Increased size to encompass character
+        const characterShape = new CANNON.Box(new CANNON.Vec3(0.3, 0.6, 0.3));
         const characterBody = new CANNON.Body({
             mass: 5,
             shape: characterShape,
-            position: new CANNON.Vec3(0, 0.6, 0), // Adjust height to match new size
+            position: new CANNON.Vec3(0, 0.6, 0),
             fixedRotation: true,
             linearDamping: 0.9,
             angularDamping: 0.9
         });
+        
+        // Add contact material for better ground interaction
+        const characterMaterial = new CANNON.Material('character');
+        const groundMaterial = new CANNON.Material('ground');
+        characterBody.material = characterMaterial;
+        gameState.physics.bodies.ground.material = groundMaterial;
+        
+        const characterGroundContact = new CANNON.ContactMaterial(
+            characterMaterial,
+            groundMaterial,
+            {
+                friction: 0.5,
+                restitution: 0.0
+            }
+        );
+        gameState.world.addContactMaterial(characterGroundContact);
+        
         gameState.world.addBody(characterBody);
         gameState.physics.bodies.character = characterBody;
 
@@ -378,11 +407,11 @@ async function loadAssets() {
 
         // Create basic environment
         const groundGeometry = new THREE.PlaneGeometry(100, 100);
-        const groundMaterial = new THREE.MeshStandardMaterial({ 
+        const groundVisualMaterial = new THREE.MeshStandardMaterial({ 
             color: 0x3a5f0b,
             side: THREE.DoubleSide
         });
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        const ground = new THREE.Mesh(groundGeometry, groundVisualMaterial);
         ground.rotation.x = -Math.PI / 2;
         ground.position.y = 0;
         ground.receiveShadow = true;
@@ -411,7 +440,7 @@ async function loadAssets() {
         const treeWidth3 = treeBoundingBox3.max.x - treeBoundingBox3.min.x;
 
         // Add trees to the scene
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 40; i++) {
             // Randomly choose tree type (equal probability for each type)
             const treeType = Math.floor(Math.random() * 3); // 0, 1, or 2
             let treeResult, treeHeight, treeWidth;
@@ -499,10 +528,8 @@ async function loadAssets() {
 
             // Add debug visualization for tree
             if (gameState.physics.debug.enabled) {
-                console.log(`Creating debug visualization for tree ${i}...`);
-                const treeHelper = createPhysicsDebugHelper(treeBody, 0x0000ff);
-                gameState.scene.add(treeHelper);
-                gameState.physics.debug.helpers.trees.push(treeHelper);
+                // Removed tree debug visualization while keeping physics bodies
+                gameState.physics.debug.helpers.trees.push(null);
             }
         }
 
@@ -573,7 +600,7 @@ function animate() {
     // Step the physics world
     gameState.world.step(fixedTimeStep);
 
-    // Handle character movement
+    // Handle character movement and jumping
     if (gameState.physics.bodies.character && gameState.player) {
         const moveSpeed = 0.1;
         let isMoving = false;
@@ -582,10 +609,22 @@ function animate() {
         const forwardX = Math.sin(gameState.cameraAngle);
         const forwardZ = Math.cos(gameState.cameraAngle);
         
+        // Handle jump
+        if (gameState.controls.jump && gameState.physics.character.isGrounded) {
+            console.log('Jumping!'); // Debug log
+            gameState.physics.bodies.character.velocity.y = gameState.physics.character.jumpForce;
+            gameState.physics.character.isGrounded = false;
+        }
+
+        // Check if character is on ground (using velocity)
+        if (Math.abs(gameState.physics.bodies.character.velocity.y) < 0.001) {
+            gameState.physics.character.isGrounded = true;
+        }
+
         // Calculate new position based on controls
         const newPosition = new THREE.Vector3(
             gameState.physics.bodies.character.position.x,
-            0.6, // Update to match new physics body height
+            gameState.physics.bodies.character.position.y,
             gameState.physics.bodies.character.position.z
         );
 
@@ -610,13 +649,15 @@ function animate() {
             isMoving = true;
         }
 
-        // Update physics body position
-        gameState.physics.bodies.character.position.copy(newPosition);
+        // Update physics body position (x and z only, let physics handle y)
+        gameState.physics.bodies.character.position.x = newPosition.x;
+        gameState.physics.bodies.character.position.z = newPosition.z;
         
-        // Update visual model to be at ground level
-        gameState.player.position.set(newPosition.x, 0, newPosition.z);
+        // Update visual model position
+        gameState.player.position.copy(newPosition);
+        gameState.player.position.y = Math.max(0, gameState.physics.bodies.character.position.y - 0.6);
         
-        // Update player rotation to face movement direction
+        // Update player rotation and animation
         if (isMoving) {
             gameState.player.rotation.y = gameState.cameraAngle;
             if (gameState.currentAnimation !== 'running') {
@@ -631,24 +672,12 @@ function animate() {
                 gameState.currentAnimation = 'idle';
             }
         }
-    }
 
-    // Update debug visualizations
-    if (gameState.physics.debug.enabled) {
-        // Update character debug helper
-        if (gameState.physics.debug.helpers.character && gameState.physics.bodies.character) {
+        // Update debug visualization
+        if (gameState.physics.debug.enabled && gameState.physics.debug.helpers.character) {
             gameState.physics.debug.helpers.character.position.copy(gameState.physics.bodies.character.position);
             gameState.physics.debug.helpers.character.quaternion.copy(gameState.physics.bodies.character.quaternion);
         }
-
-        // Update tree debug helpers
-        gameState.physics.bodies.trees.forEach((treeBody, index) => {
-            const helper = gameState.physics.debug.helpers.trees[index];
-            if (helper) {
-                helper.position.copy(treeBody.position);
-                helper.quaternion.copy(treeBody.quaternion);
-            }
-        });
     }
 
     // Update animations
@@ -656,7 +685,7 @@ function animate() {
         gameState.mixer.update(deltaTime);
     }
 
-    // Update camera position based on player position
+    // Update camera position
     if (gameState.player) {
         gameState.camera.position.x = gameState.player.position.x - Math.sin(gameState.cameraAngle) * gameState.cameraDistance;
         gameState.camera.position.z = gameState.player.position.z - Math.cos(gameState.cameraAngle) * gameState.cameraDistance;
