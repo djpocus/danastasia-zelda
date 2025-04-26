@@ -305,243 +305,267 @@ async function loadAssets() {
     try {
         console.log('Starting to load character model...');
         
-        // Load character model
-        const characterResult = await loader.loadAsync('assets/models/character.glb');
-        console.log('Character model loaded successfully:', characterResult);
-        
-        gameState.player = characterResult.scene;
-        console.log('Player scene created:', gameState.player);
-        
-        // Configure character model
-        gameState.player.traverse((child) => {
-            if (child.isMesh) {
-                console.log('Configuring mesh:', child.name);
-                // Enable shadows
-                child.castShadow = true;
-                child.receiveShadow = true;
-                
-                // Set up materials
-                if (child.material) {
-                    console.log('Material found:', child.material);
-                    child.material.roughness = 0.7;
-                    child.material.metalness = 0.3;
-                    child.material.shadowSide = THREE.DoubleSide;
-                } else {
-                    console.log('No material found for mesh:', child.name);
-                    // Add a default material if none exists
-                    child.material = new THREE.MeshStandardMaterial({
-                        color: 0x00ff00,
-                        roughness: 0.7,
-                        metalness: 0.3
-                    });
-                }
-            }
-        });
-        
-        // Add physics body to character with size that encompasses the whole model
-        const characterShape = new CANNON.Box(new CANNON.Vec3(0.3, 0.6, 0.3));
-        const characterBody = new CANNON.Body({
-            mass: 5,
-            shape: characterShape,
-            position: new CANNON.Vec3(0, 0.6, 0),
-            fixedRotation: true,
-            linearDamping: 0.9,
-            angularDamping: 0.9
-        });
-        
-        // Add contact material for better ground interaction
-        const characterMaterial = new CANNON.Material('character');
-        const groundMaterial = new CANNON.Material('ground');
-        characterBody.material = characterMaterial;
-        gameState.physics.bodies.ground.material = groundMaterial;
-        
-        const characterGroundContact = new CANNON.ContactMaterial(
-            characterMaterial,
-            groundMaterial,
-            {
-                friction: 0.5,
-                restitution: 0.0
-            }
-        );
-        gameState.world.addContactMaterial(characterGroundContact);
-        
-        gameState.world.addBody(characterBody);
-        gameState.physics.bodies.character = characterBody;
-
-        // Position character at ground level
-        gameState.player.position.set(0, 0, 0);
-        gameState.player.scale.set(1, 1, 1);
-        
-        // Add character to scene
-        gameState.scene.add(gameState.player);
-        console.log('Player added to scene');
-        
-        // Load animations
-        console.log('Loading animations...');
-        const [idleResult, runningResult] = await Promise.all([
-            loader.loadAsync('assets/animations/Animation_Idle_03_withSkin.glb'),
-            loader.loadAsync('assets/animations/Animation_Running_withSkin.glb')
-        ]);
-        console.log('Animations loaded successfully');
-        
-        // Set up animation mixer and actions
-        gameState.mixer = new THREE.AnimationMixer(gameState.player);
-        gameState.animations = {
-            idle: gameState.mixer.clipAction(idleResult.animations[0]),
-            running: gameState.mixer.clipAction(runningResult.animations[0])
-        };
-        
-        // Configure animations
-        Object.values(gameState.animations).forEach(action => {
-            action.setEffectiveWeight(1);
-            action.setEffectiveTimeScale(1);
-            action.play();
-            action.paused = true;
-        });
-        
-        // Start with idle animation
-        gameState.animations.idle.paused = false;
-        gameState.currentAnimation = 'idle';
-        
-        console.log('Animation system configured');
-
-        // Create basic environment
-        const groundGeometry = new THREE.PlaneGeometry(100, 100);
-        const groundVisualMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x3a5f0b,
-            side: THREE.DoubleSide
-        });
-        const ground = new THREE.Mesh(groundGeometry, groundVisualMaterial);
-        ground.rotation.x = -Math.PI / 2;
-        ground.position.y = 0;
-        ground.receiveShadow = true;
-        gameState.scene.add(ground);
-
-        // Load tree models
-        console.log('Loading tree models...');
-        const [treeResult1, treeResult2, treeResult3] = await Promise.all([
-            loader.loadAsync('assets/models/environment/low_polygon_tree_0424033052.glb'),
-            loader.loadAsync('assets/models/environment/make_me_a_low_poly_tr_0425195522.glb'),
-            loader.loadAsync('assets/models/environment/Low_Poly_Tree_in_a_fa_0425195043.glb')
-        ]);
-        console.log('Tree models loaded successfully');
-
-        // Calculate bounding boxes for all tree types
-        const treeBoundingBox1 = new THREE.Box3().setFromObject(treeResult1.scene);
-        const treeHeight1 = treeBoundingBox1.max.y - treeBoundingBox1.min.y;
-        const treeWidth1 = treeBoundingBox1.max.x - treeBoundingBox1.min.x;
-
-        const treeBoundingBox2 = new THREE.Box3().setFromObject(treeResult2.scene);
-        const treeHeight2 = treeBoundingBox2.max.y - treeBoundingBox2.min.y;
-        const treeWidth2 = treeBoundingBox2.max.x - treeBoundingBox2.min.x;
-
-        const treeBoundingBox3 = new THREE.Box3().setFromObject(treeResult3.scene);
-        const treeHeight3 = treeBoundingBox3.max.y - treeBoundingBox3.min.y;
-        const treeWidth3 = treeBoundingBox3.max.x - treeBoundingBox3.min.x;
-
-        // Add trees to the scene
-        for (let i = 0; i < 40; i++) {
-            // Randomly choose tree type (equal probability for each type)
-            const treeType = Math.floor(Math.random() * 3); // 0, 1, or 2
-            let treeResult, treeHeight, treeWidth;
+        // Load character model with error handling
+        try {
+            const characterResult = await loader.loadAsync('/models/character.glb');
+            console.log('Character model loaded successfully:', characterResult);
             
-            switch(treeType) {
-                case 0:
-                    treeResult = treeResult1;
-                    treeHeight = treeHeight1;
-                    treeWidth = treeWidth1;
-                    break;
-                case 1:
-                    treeResult = treeResult2;
-                    treeHeight = treeHeight2;
-                    treeWidth = treeWidth2;
-                    break;
-                case 2:
-                    treeResult = treeResult3;
-                    treeHeight = treeHeight3;
-                    treeWidth = treeWidth3;
-                    break;
-            }
+            gameState.player = characterResult.scene;
+            console.log('Player scene created:', gameState.player);
             
-            const tree = treeResult.scene.clone();
-            
-            // Randomize tree scale based on type with additional random variation
-            let scale;
-            const sizeVariation = 0.8 + Math.random() * 0.4; // Random between 0.8 and 1.2 (80% to 120%)
-            
-            if (treeType === 1) { // Second tree type (taller variant)
-                const baseScale = (1.4 + Math.random() * 0.45) * sizeVariation; // Reduced by another 20% (from 1.75 + random * 0.56)
-                const heightIncrease = 1.3 + Math.random() * 0.2; // Random 30-50% increase
-                tree.scale.set(baseScale, baseScale * heightIncrease, baseScale);
-                var scaledHeight = treeHeight * (baseScale * heightIncrease);
-                var scaledWidth = treeWidth * baseScale;
-            } else if (treeType === 2) { // Third tree type
-                scale = (2.8 + Math.random() * 0.9) * sizeVariation;
-                tree.scale.set(scale, scale, scale);
-                var scaledHeight = treeHeight * scale;
-                var scaledWidth = treeWidth * scale;
-            } else { // First tree type (original)
-                scale = (3.0 + Math.random() * 1.0) * sizeVariation;
-                tree.scale.set(scale, scale, scale);
-                var scaledHeight = treeHeight * scale;
-                var scaledWidth = treeWidth * scale;
-            }
-            
-            // Position tree based on its bounding box
-            tree.position.set(
-                Math.random() * 80 - 40,
-                scaledHeight / 2,
-                Math.random() * 80 - 40
-            );
-            
-            // Randomize tree rotation
-            tree.rotation.y = Math.random() * Math.PI * 2;
-            
-            // Configure tree for shadows
-            tree.traverse((child) => {
+            // Configure character model
+            gameState.player.traverse((child) => {
                 if (child.isMesh) {
+                    console.log('Configuring mesh:', child.name);
+                    // Enable shadows
                     child.castShadow = true;
                     child.receiveShadow = true;
+                    
+                    // Set up materials
+                    if (child.material) {
+                        console.log('Material found:', child.material);
+                        child.material.roughness = 0.7;
+                        child.material.metalness = 0.3;
+                        child.material.shadowSide = THREE.DoubleSide;
+                    } else {
+                        console.log('No material found for mesh:', child.name);
+                        // Add a default material if none exists
+                        child.material = new THREE.MeshStandardMaterial({
+                            color: 0x00ff00,
+                            roughness: 0.7,
+                            metalness: 0.3
+                        });
+                    }
                 }
             });
             
-            gameState.scene.add(tree);
-
-            // Add physics body for tree
-            const treeShape = new CANNON.Cylinder(
-                (scaledWidth * 0.5) / 2,
-                (scaledWidth * 0.5) / 2,
-                scaledHeight,
-                8
-            );
-            const treeBody = new CANNON.Body({
-                mass: 0,
-                shape: treeShape,
-                position: new CANNON.Vec3(
-                    tree.position.x,
-                    tree.position.y,
-                    tree.position.z
-                )
+            // Add physics body to character with size that encompasses the whole model
+            const characterShape = new CANNON.Box(new CANNON.Vec3(0.3, 0.6, 0.3));
+            const characterBody = new CANNON.Body({
+                mass: 5,
+                shape: characterShape,
+                position: new CANNON.Vec3(0, 0.6, 0),
+                fixedRotation: true,
+                linearDamping: 0.9,
+                angularDamping: 0.9
             });
-            gameState.world.addBody(treeBody);
-            gameState.physics.bodies.trees.push(treeBody);
+            
+            // Add contact material for better ground interaction
+            const characterMaterial = new CANNON.Material('character');
+            const groundMaterial = new CANNON.Material('ground');
+            characterBody.material = characterMaterial;
+            gameState.physics.bodies.ground.material = groundMaterial;
+            
+            const characterGroundContact = new CANNON.ContactMaterial(
+                characterMaterial,
+                groundMaterial,
+                {
+                    friction: 0.5,
+                    restitution: 0.0
+                }
+            );
+            gameState.world.addContactMaterial(characterGroundContact);
+            
+            gameState.world.addBody(characterBody);
+            gameState.physics.bodies.character = characterBody;
 
-            // Add debug visualization for tree
-            if (gameState.physics.debug.enabled) {
-                // Removed tree debug visualization while keeping physics bodies
-                gameState.physics.debug.helpers.trees.push(null);
+            // Position character at ground level
+            gameState.player.position.set(0, 0, 0);
+            gameState.player.scale.set(1, 1, 1);
+            
+            // Add character to scene
+            gameState.scene.add(gameState.player);
+            console.log('Player added to scene');
+            
+            // Load animations with error handling
+            console.log('Loading animations...');
+            try {
+                const [idleResult, runningResult] = await Promise.all([
+                    loader.loadAsync('/animations/Animation_Idle_03_withSkin.glb'),
+                    loader.loadAsync('/animations/Animation_Running_withSkin.glb')
+                ]);
+                console.log('Animations loaded successfully');
+                
+                // Set up animation mixer and actions
+                gameState.mixer = new THREE.AnimationMixer(gameState.player);
+                gameState.animations = {
+                    idle: gameState.mixer.clipAction(idleResult.animations[0]),
+                    running: gameState.mixer.clipAction(runningResult.animations[0])
+                };
+                
+                // Configure animations
+                Object.values(gameState.animations).forEach(action => {
+                    action.setEffectiveWeight(1);
+                    action.setEffectiveTimeScale(1);
+                    action.play();
+                    action.paused = true;
+                });
+                
+                // Start with idle animation
+                gameState.animations.idle.paused = false;
+                gameState.currentAnimation = 'idle';
+                
+                console.log('Animation system configured');
+
+            } catch (animError) {
+                console.error('Error loading animations:', animError);
+                // Continue without animations if they fail to load
             }
-        }
 
-        // Add debug visualization for character
-        if (gameState.physics.debug.enabled) {
-            console.log('Creating character debug visualization...');
-            const characterHelper = createPhysicsDebugHelper(characterBody, 0xffff00);
-            gameState.scene.add(characterHelper);
-            gameState.physics.debug.helpers.character = characterHelper;
-        }
+            // Create basic environment
+            const groundGeometry = new THREE.PlaneGeometry(100, 100);
+            const groundVisualMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x3a5f0b,
+                side: THREE.DoubleSide
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundVisualMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = 0;
+            ground.receiveShadow = true;
+            gameState.scene.add(ground);
 
-        console.log('Environment setup complete');
+            // Load tree models with error handling
+            console.log('Loading tree models...');
+            try {
+                const [treeResult1, treeResult2, treeResult3] = await Promise.all([
+                    loader.loadAsync('/models/environment/low_polygon_tree_0424033052.glb'),
+                    loader.loadAsync('/models/environment/make_me_a_low_poly_tr_0425195522.glb'),
+                    loader.loadAsync('/models/environment/Low_Poly_Tree_in_a_fa_0425195043.glb')
+                ]);
+                console.log('Tree models loaded successfully');
+
+                // Calculate bounding boxes for all tree types
+                const treeBoundingBox1 = new THREE.Box3().setFromObject(treeResult1.scene);
+                const treeHeight1 = treeBoundingBox1.max.y - treeBoundingBox1.min.y;
+                const treeWidth1 = treeBoundingBox1.max.x - treeBoundingBox1.min.x;
+
+                const treeBoundingBox2 = new THREE.Box3().setFromObject(treeResult2.scene);
+                const treeHeight2 = treeBoundingBox2.max.y - treeBoundingBox2.min.y;
+                const treeWidth2 = treeBoundingBox2.max.x - treeBoundingBox2.min.x;
+
+                const treeBoundingBox3 = new THREE.Box3().setFromObject(treeResult3.scene);
+                const treeHeight3 = treeBoundingBox3.max.y - treeBoundingBox3.min.y;
+                const treeWidth3 = treeBoundingBox3.max.x - treeBoundingBox3.min.x;
+
+                // Add trees to the scene
+                for (let i = 0; i < 40; i++) {
+                    // Randomly choose tree type (equal probability for each type)
+                    const treeType = Math.floor(Math.random() * 3); // 0, 1, or 2
+                    let treeResult, treeHeight, treeWidth;
+                    
+                    switch(treeType) {
+                        case 0:
+                            treeResult = treeResult1;
+                            treeHeight = treeHeight1;
+                            treeWidth = treeWidth1;
+                            break;
+                        case 1:
+                            treeResult = treeResult2;
+                            treeHeight = treeHeight2;
+                            treeWidth = treeWidth2;
+                            break;
+                        case 2:
+                            treeResult = treeResult3;
+                            treeHeight = treeHeight3;
+                            treeWidth = treeWidth3;
+                            break;
+                    }
+                    
+                    const tree = treeResult.scene.clone();
+                    
+                    // Randomize tree scale based on type with additional random variation
+                    let scale;
+                    const sizeVariation = 0.8 + Math.random() * 0.4; // Random between 0.8 and 1.2 (80% to 120%)
+                    
+                    if (treeType === 1) { // Second tree type (taller variant)
+                        const baseScale = (1.4 + Math.random() * 0.45) * sizeVariation; // Reduced by another 20% (from 1.75 + random * 0.56)
+                        const heightIncrease = 1.3 + Math.random() * 0.2; // Random 30-50% increase
+                        tree.scale.set(baseScale, baseScale * heightIncrease, baseScale);
+                        var scaledHeight = treeHeight * (baseScale * heightIncrease);
+                        var scaledWidth = treeWidth * baseScale;
+                    } else if (treeType === 2) { // Third tree type
+                        scale = (2.8 + Math.random() * 0.9) * sizeVariation;
+                        tree.scale.set(scale, scale, scale);
+                        var scaledHeight = treeHeight * scale;
+                        var scaledWidth = treeWidth * scale;
+                    } else { // First tree type (original)
+                        scale = (3.0 + Math.random() * 1.0) * sizeVariation;
+                        tree.scale.set(scale, scale, scale);
+                        var scaledHeight = treeHeight * scale;
+                        var scaledWidth = treeWidth * scale;
+                    }
+                    
+                    // Position tree based on its bounding box
+                    tree.position.set(
+                        Math.random() * 80 - 40,
+                        scaledHeight / 2,
+                        Math.random() * 80 - 40
+                    );
+                    
+                    // Randomize tree rotation
+                    tree.rotation.y = Math.random() * Math.PI * 2;
+                    
+                    // Configure tree for shadows
+                    tree.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    
+                    gameState.scene.add(tree);
+
+                    // Add physics body for tree
+                    const treeShape = new CANNON.Cylinder(
+                        (scaledWidth * 0.5) / 2,
+                        (scaledWidth * 0.5) / 2,
+                        scaledHeight,
+                        8
+                    );
+                    const treeBody = new CANNON.Body({
+                        mass: 0,
+                        shape: treeShape,
+                        position: new CANNON.Vec3(
+                            tree.position.x,
+                            tree.position.y,
+                            tree.position.z
+                        )
+                    });
+                    gameState.world.addBody(treeBody);
+                    gameState.physics.bodies.trees.push(treeBody);
+
+                    // Add debug visualization for tree
+                    if (gameState.physics.debug.enabled) {
+                        // Removed tree debug visualization while keeping physics bodies
+                        gameState.physics.debug.helpers.trees.push(null);
+                    }
+                }
+
+                // Add debug visualization for character
+                if (gameState.physics.debug.enabled) {
+                    console.log('Creating character debug visualization...');
+                    const characterHelper = createPhysicsDebugHelper(characterBody, 0xffff00);
+                    gameState.scene.add(characterHelper);
+                    gameState.physics.debug.helpers.character = characterHelper;
+                }
+
+                console.log('Environment setup complete');
+
+            } catch (treeError) {
+                console.error('Error loading tree models:', treeError);
+                // Continue without trees if they fail to load
+            }
+
+        } catch (characterError) {
+            console.error('Error loading character model:', characterError);
+            // Fallback to basic cube if model fails to load
+            const geometry = new THREE.BoxGeometry(1, 2, 1);
+            const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+            gameState.player = new THREE.Mesh(geometry, material);
+            gameState.player.position.set(0, 1, 0);
+            gameState.scene.add(gameState.player);
+            console.log('Using fallback cube model');
+        }
 
     } catch (error) {
         console.error('Error loading assets:', error);
