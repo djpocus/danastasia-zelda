@@ -1,22 +1,18 @@
-import { defineConfig } from 'vite';
-import { resolve } from 'path';
-
-export default defineConfig({
+export default {
+  base: '/',
   build: {
-    chunkSizeWarningLimit: 1000,
+    outDir: 'dist',
+    assetsDir: 'assets',
+    sourcemap: true,
+    // Improve chunking strategy for better loading
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor': ['three', 'cannon-es', 'nipplejs'],
-          'game': ['/src/js/main.js']
+          'three': ['three'],
+          'cannon': ['cannon-es'],
+          'vendor': ['nipplejs']
         }
       }
     }
-  },
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-      '@assets': resolve(__dirname, 'assets')
-    }
   }
-}); 
+} 
