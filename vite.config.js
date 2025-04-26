@@ -6,29 +6,31 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: true,
     rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html')
-      },
       output: {
         manualChunks: {
           three: ['three'],
-          cannon: ['cannon-es'],
+          'cannon-es': ['cannon-es'],
           nipplejs: ['nipplejs']
+        },
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name.endsWith('.glb')) {
+            return 'models/[name][extname]';
+          }
+          return 'assets/[name]-[hash][extname]';
         }
       }
     },
-    assetsInlineLimit: 0,
     copyPublicDir: true
   },
   server: {
     port: 5173,
     open: true
   },
-  publicDir: 'assets',
-  assetsInclude: ['**/*.glb', '**/*.gltf', '**/*.fbx', '**/*.png', '**/*.jpg', '**/*.jpeg'],
-  optimizeDeps: {
-    exclude: ['cannon-es']
+  publicDir: 'public',
+  resolve: {
+    alias: {
+      '@assets': resolve(__dirname, 'assets')
+    }
   }
 }); 
